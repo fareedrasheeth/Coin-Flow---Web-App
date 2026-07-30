@@ -5,30 +5,6 @@ import { connectWebSocket, sendWebSocketCommand } from '@/lib/websocket';
 
 const CoinFlowContext = createContext(null);
 
-const BASE_TIMESTAMP = '2026-07-30T22:00:00.000Z';
-const FIXED_SLOT_COUNTS = [12, 10, 15, 8, 14, 6, 18];
-const FIXED_SENSOR_COUNTS = [12, 10, 15, 8, 14, 6, 18];
-
-function generateInitialHistory() {
-  const history = [];
-  const baseTime = 1785360000000;
-  for (let i = 1; i <= 35; i++) {
-    const c = SRI_LANKAN_COINS[(i - 1) % SRI_LANKAN_COINS.length];
-    history.push({
-      eventId: `EVT-LK-${1000 + i}`,
-      coinType: c.label,
-      coinValue: c.coinValue,
-      slotName: c.name,
-      slotId: c.id,
-      detectionTime: new Date(baseTime - i * 140000).toISOString(),
-      sensorId: c.gpioSensor,
-      espDevice: 'ESP32-COIN-01',
-      status: 'Processed',
-    });
-  }
-  return history;
-}
-
 export function CoinFlowProvider({ children }) {
   // --- Machine Status & WebSocket State ---
   const [machineState, setMachineState] = useState('active');
@@ -65,42 +41,35 @@ export function CoinFlowProvider({ children }) {
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
 
-  // --- 7 Coin Slots State ---
+  // --- 7 Coin Slots State (STARTS AT 0 UNTIL ESP32 DETECTS COINS) ---
   const [slots, setSlots] = useState(() =>
-    SRI_LANKAN_COINS.map((c, idx) => {
-      const initialCount = FIXED_SLOT_COUNTS[idx] || 10;
-      const initialValue = initialCount * c.coinValue;
-      const limit = c.defaultLimit;
-      const maxPossible = c.defaultLimitType === 'count' ? limit : limit / c.coinValue;
-      const capPct = Math.min(100, Math.round((initialCount / maxPossible) * 100));
-      return {
-        ...c,
-        count: initialCount,
-        totalValue: initialValue,
-        limitType: c.defaultLimitType,
-        maximumLimit: limit,
-        capacityPercentage: capPct,
-        status: capPct >= 100 ? 'full' : capPct >= 80 ? 'almost_full' : 'available',
-        sensorStatus: 'active',
-        servoStatus: 'ready',
-        servoAngle: 0,
-        lastDetectedAt: BASE_TIMESTAMP,
-      };
-    })
+    SRI_LANKAN_COINS.map((c) => ({
+      ...c,
+      count: 0,
+      totalValue: 0,
+      limitType: c.defaultLimitType,
+      maximumLimit: c.defaultLimit,
+      capacityPercentage: 0,
+      status: 'available',
+      sensorStatus: 'active',
+      servoStatus: 'ready',
+      servoAngle: 0,
+      lastDetectedAt: null,
+    }))
   );
 
   const totalCoins = slots.reduce((acc, s) => acc + s.count, 0);
   const totalValue = slots.reduce((acc, s) => acc + s.totalValue, 0);
 
-  // --- Latest Coin Card State ---
+  // --- Latest Coin Card State (CLEAN INITIAL PLACEHOLDER) ---
   const [latestCoin, setLatestCoin] = useState({
-    type: 'Rs.2 Big',
-    value: 2,
-    slotId: 'slot_7',
-    label: 'Rs.2 Big',
-    detectedAt: BASE_TIMESTAMP,
-    slotCount: 18,
-    slotValue: 36,
+    type: 'None',
+    value: 0,
+    slotId: null,
+    label: 'Awaiting Coin Insertion',
+    detectedAt: null,
+    slotCount: 0,
+    slotValue: 0,
   });
 
   const [activeToast, setActiveToast] = useState(null);
@@ -108,13 +77,13 @@ export function CoinFlowProvider({ children }) {
   const [resetConfirmModal, setResetConfirmModal] = useState({ isOpen: false, slot: null });
   const [emergencyModal, setEmergencyModal] = useState(false);
 
-  // --- 7 Optical IR Sensors & 8 Servo Motors ---
+  // --- 7 Optical IR Sensors (STARTS AT 0 DETECTIONS) ---
   const [sensors, setSensors] = useState(() =>
-    ALL_SENSORS.map((s, idx) => ({
+    ALL_SENSORS.map((s) => ({
       ...s,
       status: 'active',
-      lastTriggered: BASE_TIMESTAMP,
-      detectionCount: FIXED_SENSOR_COUNTS[idx] || 20,
+      lastTriggered: null,
+      detectionCount: 0,
       signalState: 'HIGH',
     }))
   );
@@ -124,31 +93,31 @@ export function CoinFlowProvider({ children }) {
       ...s,
       currentAngle: 0,
       status: 'ready',
-      lastMoved: BASE_TIMESTAMP,
+      lastMoved: null,
     }))
   );
 
-  // --- Activity Log & History ---
+  // --- Activity Log & History (CLEAN INITIAL STATE) ---
   const [activityFeed, setActivityFeed] = useState(() => [
     {
       id: 'act_init_1',
-      title: 'WebSocket Protocol Active',
-      description: `Listening for ESP32 telemetry events on ${DEFAULT_WEBSOCKET_URL}`,
-      timestamp: BASE_TIMESTAMP,
+      title: 'WebSocket Client Connected',
+      description: `Listening for ESP32 hardware telemetry on ${DEFAULT_WEBSOCKET_URL}`,
+      timestamp: new Date().toISOString(),
       severity: 'info',
       icon: 'Wifi',
     },
     {
       id: 'act_init_2',
-      title: '7 Optical IR Sensors Ready',
-      description: 'Connected below sorting holes on hardware tray',
-      timestamp: BASE_TIMESTAMP,
+      title: '7 Optical IR Sensors Calibrated',
+      description: 'System ready for coin sorting and detection',
+      timestamp: new Date().toISOString(),
       severity: 'success',
       icon: 'CheckCircle',
     },
   ]);
 
-  const [coinHistory, setCoinHistory] = useState(() => generateInitialHistory());
+  const [coinHistory, setCoinHistory] = useState([]);
 
   // --- Voice Synthesis Setup ---
   useEffect(() => {
@@ -380,7 +349,7 @@ export function CoinFlowProvider({ children }) {
     [espConnected, coinEntryEnabled, machineState, slots, speakText, addActivity, announceSequence]
   );
 
-  // --- WebSocket Listener & Telemetry Processing ---
+  // --- WebSocket Listener & Real-Time ESP32 Event Ingestion ---
   useEffect(() => {
     connectWebSocket(
       wsUrl,
@@ -445,6 +414,25 @@ export function CoinFlowProvider({ children }) {
         else if (data.event === 'telemetry_sync') {
           if (data.status) setMachineState(data.status);
           if (data.coinEntryEnabled !== undefined) setCoinEntryEnabled(data.coinEntryEnabled);
+          if (Array.isArray(data.slots)) {
+            setSlots((prev) =>
+              prev.map((s) => {
+                const remote = data.slots.find((rs) => rs.slotId === s.id || rs.slotId === s.slot_id);
+                if (!remote) return s;
+                const newCount = remote.count !== undefined ? remote.count : s.count;
+                const newValue = newCount * s.coinValue;
+                const maxPossible = s.limitType === 'count' ? s.maximumLimit : s.maximumLimit / s.coinValue;
+                const newCapPct = Math.min(100, Math.round((newCount / maxPossible) * 100));
+                return {
+                  ...s,
+                  count: newCount,
+                  totalValue: newValue,
+                  capacityPercentage: newCapPct,
+                  status: newCapPct >= 100 ? 'full' : newCapPct >= 80 ? 'almost_full' : 'available',
+                };
+              })
+            );
+          }
         }
         // 6. Hardware Fault Event
         else if (data.event === 'hardware_error') {
@@ -478,7 +466,6 @@ export function CoinFlowProvider({ children }) {
         timestamp: nowStr,
       });
 
-      // Reset slot count & value locally
       setSlots((prev) =>
         prev.map((s) => {
           if (s.id !== targetSlot.id) return s;
