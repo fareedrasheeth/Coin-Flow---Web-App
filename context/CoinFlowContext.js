@@ -1,18 +1,17 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { SRI_LANKAN_COINS, ALL_SENSORS, ALL_SERVOS } from '@/lib/constants';
+import { SRI_LANKAN_COINS, ALL_SENSORS, ALL_SERVOS, DEFAULT_WEBSOCKET_URL } from '@/lib/constants';
+import { connectWebSocket, sendWebSocketCommand } from '@/lib/websocket';
 
 const CoinFlowContext = createContext(null);
 
-// Deterministic baseline timestamp for SSR hydration consistency
 const BASE_TIMESTAMP = '2026-07-30T22:00:00.000Z';
 const FIXED_SLOT_COUNTS = [12, 10, 15, 8, 14, 6, 18];
-const FIXED_SENSOR_COUNTS = [120, 12, 10, 15, 8, 14, 6, 18];
+const FIXED_SENSOR_COUNTS = [12, 10, 15, 8, 14, 6, 18];
 
-// Deterministic initial coin history generator
 function generateInitialHistory() {
   const history = [];
-  const baseTime = 1785360000000; // Fixed timestamp baseline
+  const baseTime = 1785360000000;
   for (let i = 1; i <= 35; i++) {
     const c = SRI_LANKAN_COINS[(i - 1) % SRI_LANKAN_COINS.length];
     history.push({
@@ -31,14 +30,35 @@ function generateInitialHistory() {
 }
 
 export function CoinFlowProvider({ children }) {
-  // --- Machine Status State ---
-  const [machineState, setMachineState] = useState('active'); // active, sorting, paused, slot_full, reset_required, offline, error
+  // --- Machine Status & WebSocket State ---
+  const [machineState, setMachineState] = useState('active');
   const [espConnected, setEspConnected] = useState(true);
+  const [wsUrl, setWsUrl] = useState(DEFAULT_WEBSOCKET_URL);
+  const [wsStatus, setWsStatus] = useState('connected');
   const [coinEntryEnabled, setCoinEntryEnabled] = useState(true);
   const [wifiSignal, setWifiSignal] = useState(92);
+
+  // --- Theme State ---
   const [theme, setTheme] = useState('dark');
 
-  // --- Voice Announcement State & Engine ---
+  // Synchronize theme attribute on mount and theme change
+  const handleSetTheme = useCallback((newTheme) => {
+    setTheme(newTheme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', newTheme);
+      if (newTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    handleSetTheme(theme);
+  }, [theme, handleSetTheme]);
+
+  // --- Voice Announcement Engine ---
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [volume, setVolume] = useState(0.85);
   const [rate, setRate] = useState(1.0);
@@ -46,7 +66,7 @@ export function CoinFlowProvider({ children }) {
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
 
-  // --- Coin Slots State (DETERMINISTIC FOR HYDRATION) ---
+  // --- 7 Coin Slots State ---
   const [slots, setSlots] = useState(() =>
     SRI_LANKAN_COINS.map((c, idx) => {
       const initialCount = FIXED_SLOT_COUNTS[idx] || 10;
@@ -70,7 +90,6 @@ export function CoinFlowProvider({ children }) {
     })
   );
 
-  // --- Totals ---
   const totalCoins = slots.reduce((acc, s) => acc + s.count, 0);
   const totalValue = slots.reduce((acc, s) => acc + s.totalValue, 0);
 
@@ -85,15 +104,12 @@ export function CoinFlowProvider({ children }) {
     slotValue: 36,
   });
 
-  // --- Toast Notification State ---
   const [activeToast, setActiveToast] = useState(null);
-
-  // --- Modals State ---
   const [fullSlotModal, setFullSlotModal] = useState({ isOpen: false, slot: null });
   const [resetConfirmModal, setResetConfirmModal] = useState({ isOpen: false, slot: null });
   const [emergencyModal, setEmergencyModal] = useState(false);
 
-  // --- Sensors & Servos Detailed State ---
+  // --- Exactly 7 IR Sensors (One below each hole) & 8 Servos ---
   const [sensors, setSensors] = useState(() =>
     ALL_SENSORS.map((s, idx) => ({
       ...s,
@@ -113,27 +129,26 @@ export function CoinFlowProvider({ children }) {
     }))
   );
 
-  // --- Live Activity Log ---
+  // --- Activity Feed & History ---
   const [activityFeed, setActivityFeed] = useState(() => [
     {
       id: 'act_init_1',
-      title: 'Machine Online',
-      description: 'ESP32 connected via Wi-Fi (192.168.1.104)',
+      title: 'WebSocket Connected',
+      description: `ESP32 connected via WebSocket (${DEFAULT_WEBSOCKET_URL})`,
       timestamp: BASE_TIMESTAMP,
       severity: 'info',
       icon: 'Wifi',
     },
     {
       id: 'act_init_2',
-      title: 'Self-Diagnostic Passed',
-      description: 'All 8 IR Sensors and 8 Servo Motors initialized',
+      title: '7 IR Sensors Active',
+      description: 'All 7 optical coin sorting IR sensors calibrated & ready',
       timestamp: BASE_TIMESTAMP,
       severity: 'success',
       icon: 'CheckCircle',
     },
   ]);
 
-  // --- History Records for Table ---
   const [coinHistory, setCoinHistory] = useState(() => generateInitialHistory());
 
   // --- Voice Synthesis Setup ---
@@ -160,7 +175,7 @@ export function CoinFlowProvider({ children }) {
     (text) => {
       if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
       try {
-        window.speechSynthesis.cancel(); // Stop any pending speech
+        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         if (voices.length > 0 && voices[selectedVoiceIndex]) {
           utterance.voice = voices[selectedVoiceIndex];
@@ -176,7 +191,6 @@ export function CoinFlowProvider({ children }) {
     [voiceEnabled, volume, rate, pitch, voices, selectedVoiceIndex]
   );
 
-  // Voice announcements queue helper
   const announceSequence = useCallback(
     (messages) => {
       if (!voiceEnabled) return;
@@ -189,7 +203,6 @@ export function CoinFlowProvider({ children }) {
     [voiceEnabled, speakText]
   );
 
-  // --- Add Activity Log Helper ---
   const addActivity = useCallback((title, description, severity = 'info', icon = 'Activity') => {
     const newAct = {
       id: `act_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -202,7 +215,7 @@ export function CoinFlowProvider({ children }) {
     setActivityFeed((prev) => [newAct, ...prev]);
   }, []);
 
-  // --- Trigger Coin Drop / Event Logic ---
+  // --- Core Coin Insertion Handler ---
   const insertCoin = useCallback(
     (slotId) => {
       if (!espConnected) {
@@ -224,7 +237,6 @@ export function CoinFlowProvider({ children }) {
       let isSlotFullNow = false;
       let isSlotAlmostFull = false;
 
-      // Update slot state
       setSlots((prev) =>
         prev.map((s) => {
           if (s.id !== slot.id) return s;
@@ -262,7 +274,6 @@ export function CoinFlowProvider({ children }) {
       const updatedCount = slot.count + 1;
       const updatedValue = updatedCount * slot.coinValue;
 
-      // Update Latest Coin Card
       setLatestCoin({
         type: slot.label,
         value: slot.coinValue,
@@ -273,7 +284,7 @@ export function CoinFlowProvider({ children }) {
         slotValue: updatedValue,
       });
 
-      // Update IR Sensor counter
+      // Update 7 IR sensor state
       setSensors((prev) =>
         prev.map((sen) =>
           sen.gpio === slot.gpioSensor
@@ -282,7 +293,6 @@ export function CoinFlowProvider({ children }) {
         )
       );
 
-      // Add to History
       setCoinHistory((prev) => [
         {
           eventId: `EVT-LK-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -298,7 +308,6 @@ export function CoinFlowProvider({ children }) {
         ...prev,
       ]);
 
-      // Show temporary animated toast notification for ~3s
       setActiveToast({
         id: Date.now(),
         title: `${slot.label} Coin Inserted`,
@@ -307,7 +316,6 @@ export function CoinFlowProvider({ children }) {
       });
       setTimeout(() => setActiveToast(null), 3200);
 
-      // Activity Feed
       addActivity(
         `${slot.label} Inserted`,
         `Detected at ${slot.gpioSensor}. Slot count updated to ${updatedCount} (Rs.${updatedValue})`,
@@ -315,16 +323,13 @@ export function CoinFlowProvider({ children }) {
         'Coins'
       );
 
-      // AUTOMATIC VOICE ANNOUNCEMENT
-      const voiceCoinMessage = `${slot.label} coin inserted.`;
-      speakText(voiceCoinMessage);
+      // AUTOMATIC VOICE ANNOUNCEMENT: "Rs.1 small coin inserted."
+      speakText(`${slot.label} coin inserted.`);
 
-      // FULL SLOT LOGIC
       if (isSlotFullNow) {
         setMachineState('slot_full');
         setCoinEntryEnabled(false);
 
-        // Update servo motor to ejecting
         setServos((prev) =>
           prev.map((ser) =>
             ser.gpio === slot.gpioServo
@@ -335,7 +340,6 @@ export function CoinFlowProvider({ children }) {
           )
         );
 
-        // Open Full Slot Alert Modal
         setFullSlotModal({
           isOpen: true,
           slot: {
@@ -345,7 +349,6 @@ export function CoinFlowProvider({ children }) {
           },
         });
 
-        // Add Activity
         addActivity(
           `${slot.label} Compartment Full!`,
           `Capacity reached 100%. Compartment servo activated (90°). Main coin entry paused.`,
@@ -353,7 +356,6 @@ export function CoinFlowProvider({ children }) {
           'AlertTriangle'
         );
 
-        // Voice Sequence for Full Slot
         announceSequence([
           `${slot.label} compartment is full.`,
           'Coin insertion has been paused.',
@@ -373,6 +375,52 @@ export function CoinFlowProvider({ children }) {
     [espConnected, coinEntryEnabled, machineState, slots, speakText, addActivity, announceSequence]
   );
 
+  // --- WebSocket Connection & Real-Time ESP32 Event Listener ---
+  useEffect(() => {
+    connectWebSocket(
+      wsUrl,
+      (state) => {
+        setWsStatus(state);
+        if (state === 'connected') {
+          setEspConnected(true);
+          setMachineState('active');
+        } else if (state === 'disconnected' || state === 'error') {
+          setEspConnected(false);
+          setMachineState('offline');
+        }
+      },
+      (data) => {
+        // Handle incoming WebSocket telemetry event from ESP32
+        if (data.event === 'coin_detected' || data.event === 'coin_inserted') {
+          insertCoin(data.slotId || data.slot_id);
+        } else if (data.event === 'slot_full') {
+          const slot = slots.find((s) => s.id === data.slotId || s.slot_id === data.slotId);
+          if (slot) {
+            setMachineState('slot_full');
+            setCoinEntryEnabled(false);
+            setFullSlotModal({ isOpen: true, slot });
+            announceSequence([
+              `${slot.label} compartment is full.`,
+              'Coin insertion has been paused.',
+              'Please remove the coins.',
+            ]);
+          }
+        } else if (data.event === 'slot_reset_success') {
+          const slotId = data.slotId;
+          const targetSlot = slots.find((s) => s.id === slotId || s.slot_id === slotId);
+          if (targetSlot) {
+            setSlots((prev) =>
+              prev.map((s) => (s.id === targetSlot.id ? { ...s, count: 0, totalValue: 0, capacityPercentage: 0, status: 'available' } : s))
+            );
+            setMachineState('active');
+            setCoinEntryEnabled(true);
+            announceSequence([`${targetSlot.label} compartment has been reset.`, 'The machine is ready.']);
+          }
+        }
+      }
+    );
+  }, [wsUrl, insertCoin, slots, announceSequence]);
+
   // --- Slot Reset Workflow ---
   const requestSlotReset = useCallback((slot) => {
     setResetConfirmModal({ isOpen: true, slot });
@@ -385,7 +433,14 @@ export function CoinFlowProvider({ children }) {
 
       const nowStr = new Date().toISOString();
 
-      // Reset slot count & value
+      // Send WebSocket command to ESP32 hardware
+      sendWebSocketCommand({
+        action: 'reset_slot',
+        slotId: targetSlot.id,
+        gpioServo: targetSlot.gpioServo,
+      });
+
+      // Reset slot count & value locally
       setSlots((prev) =>
         prev.map((s) => {
           if (s.id !== targetSlot.id) return s;
@@ -401,7 +456,6 @@ export function CoinFlowProvider({ children }) {
         })
       );
 
-      // Return compartment servo to home position (0°) & re-enable entry servo
       setServos((prev) =>
         prev.map((ser) =>
           ser.gpio === targetSlot.gpioServo
@@ -412,7 +466,6 @@ export function CoinFlowProvider({ children }) {
         )
       );
 
-      // Check if any other slots are still full
       const otherFull = slots.some((s) => s.id !== targetSlot.id && s.capacityPercentage >= 100);
       if (!otherFull) {
         setMachineState('active');
@@ -426,12 +479,11 @@ export function CoinFlowProvider({ children }) {
 
       addActivity(
         `${targetSlot.label} Compartment Reset`,
-        `Slot count and value reset to 0. Compartment servo returned to 0°. Machine active.`,
+        `Slot count reset to 0. WebSocket reset command sent to ESP32. Servo returned to 0°.`,
         'success',
         'RotateCcw'
       );
 
-      // AUTOMATIC VOICE ANNOUNCEMENT FOR RESET
       announceSequence([
         `${targetSlot.label} compartment has been reset.`,
         'The machine is ready.',
@@ -440,62 +492,68 @@ export function CoinFlowProvider({ children }) {
     [slots, fullSlotModal, addActivity, announceSequence]
   );
 
-  // --- Additional Controls ---
-  const triggerAlmostFullSim = useCallback((slotId) => {
-    setSlots((prev) =>
-      prev.map((s) => {
-        if (s.id !== slotId) return s;
-        const maxLimit = s.maximumLimit;
-        const maxPossible = s.limitType === 'count' ? maxLimit : maxLimit / s.coinValue;
-        const count80 = Math.ceil(maxPossible * 0.82);
-        return {
-          ...s,
-          count: count80,
-          totalValue: count80 * s.coinValue,
-          capacityPercentage: 82,
-          status: 'almost_full',
-        };
-      })
-    );
-    const slot = slots.find((s) => s.id === slotId);
-    if (slot) {
-      speakText(`${slot.label} compartment is almost full.`);
-      addActivity(`${slot.label} Almost Full (Simulated)`, 'Capacity set to 82%', 'warning', 'AlertCircle');
-    }
-  }, [slots, speakText, addActivity]);
+  // --- Simulation Controls ---
+  const triggerAlmostFullSim = useCallback(
+    (slotId) => {
+      setSlots((prev) =>
+        prev.map((s) => {
+          if (s.id !== slotId) return s;
+          const maxLimit = s.maximumLimit;
+          const maxPossible = s.limitType === 'count' ? maxLimit : maxLimit / s.coinValue;
+          const count80 = Math.ceil(maxPossible * 0.82);
+          return {
+            ...s,
+            count: count80,
+            totalValue: count80 * s.coinValue,
+            capacityPercentage: 82,
+            status: 'almost_full',
+          };
+        })
+      );
+      const slot = slots.find((s) => s.id === slotId);
+      if (slot) {
+        speakText(`${slot.label} compartment is almost full.`);
+        addActivity(`${slot.label} Almost Full (Simulated)`, 'Capacity set to 82%', 'warning', 'AlertCircle');
+      }
+    },
+    [slots, speakText, addActivity]
+  );
 
-  const triggerSlotFullSim = useCallback((slotId) => {
-    const slot = slots.find((s) => s.id === slotId);
-    if (!slot) return;
+  const triggerSlotFullSim = useCallback(
+    (slotId) => {
+      const slot = slots.find((s) => s.id === slotId);
+      if (!slot) return;
 
-    setSlots((prev) =>
-      prev.map((s) => {
-        if (s.id !== slotId) return s;
-        const maxLimit = s.maximumLimit;
-        const maxPossible = s.limitType === 'count' ? maxLimit : maxLimit / s.coinValue;
-        return {
-          ...s,
-          count: maxPossible,
-          totalValue: maxPossible * s.coinValue,
-          capacityPercentage: 100,
-          status: 'full',
-          servoStatus: 'ejecting',
-          servoAngle: 90,
-        };
-      })
-    );
+      setSlots((prev) =>
+        prev.map((s) => {
+          if (s.id !== slotId) return s;
+          const maxLimit = s.maximumLimit;
+          const maxPossible = s.limitType === 'count' ? maxLimit : maxLimit / s.coinValue;
+          return {
+            ...s,
+            count: maxPossible,
+            totalValue: maxPossible * s.coinValue,
+            capacityPercentage: 100,
+            status: 'full',
+            servoStatus: 'ejecting',
+            servoAngle: 90,
+          };
+        })
+      );
 
-    setMachineState('slot_full');
-    setCoinEntryEnabled(false);
-    setFullSlotModal({ isOpen: true, slot });
+      setMachineState('slot_full');
+      setCoinEntryEnabled(false);
+      setFullSlotModal({ isOpen: true, slot });
 
-    addActivity(`${slot.label} Full (Simulated)`, 'Simulated 100% capacity and servo ejection', 'error', 'AlertTriangle');
-    announceSequence([
-      `${slot.label} compartment is full.`,
-      'Coin insertion has been paused.',
-      'Please remove the coins.',
-    ]);
-  }, [slots, addActivity, announceSequence]);
+      addActivity(`${slot.label} Full (Simulated)`, 'Simulated 100% capacity and servo ejection', 'error', 'AlertTriangle');
+      announceSequence([
+        `${slot.label} compartment is full.`,
+        'Coin insertion has been paused.',
+        'Please remove the coins.',
+      ]);
+    },
+    [slots, addActivity, announceSequence]
+  );
 
   const triggerSensorErrorSim = useCallback(() => {
     setMachineState('error');
@@ -503,7 +561,7 @@ export function CoinFlowProvider({ children }) {
       prev.map((sen, idx) => (idx === 0 ? { ...sen, status: 'error', signalState: 'FAULT' } : sen))
     );
     speakText('Sensor error detected.');
-    addActivity('Hardware Error Simulated', 'Entry IR sensor hardware fault', 'error', 'AlertOctagon');
+    addActivity('Hardware Error Simulated', 'Optical IR sensor fault', 'error', 'AlertOctagon');
   }, [speakText, addActivity]);
 
   const triggerServoErrorSim = useCallback(() => {
@@ -520,33 +578,38 @@ export function CoinFlowProvider({ children }) {
       const nextState = !prev;
       if (!nextState) {
         setMachineState('offline');
+        setWsStatus('disconnected');
         speakText('The machine is offline.');
-        addActivity('ESP32 Disconnected', 'Wi-Fi connection lost', 'error', 'WifiOff');
+        addActivity('ESP32 Disconnected', 'WebSocket connection lost', 'error', 'WifiOff');
       } else {
         setMachineState('active');
+        setWsStatus('connected');
         speakText('The machine is ready.');
-        addActivity('ESP32 Connected', 'Wi-Fi link established', 'success', 'Wifi');
+        addActivity('ESP32 Connected', 'WebSocket link established', 'success', 'Wifi');
       }
       return nextState;
     });
   }, [speakText, addActivity]);
 
   const handleEmergencyStop = useCallback(() => {
+    sendWebSocketCommand({ action: 'emergency_stop' });
     setMachineState('paused');
     setCoinEntryEnabled(false);
     setEmergencyModal(false);
     speakText('Coin insertion has been paused.');
-    addActivity('Emergency Stop Activated', 'Main coin entry servo disabled', 'error', 'ShieldAlert');
+    addActivity('Emergency Stop Activated', 'WebSocket command sent to halt ESP32', 'error', 'ShieldAlert');
   }, [speakText, addActivity]);
 
   const resumeMachine = useCallback(() => {
+    sendWebSocketCommand({ action: 'resume_machine' });
     setMachineState('active');
     setCoinEntryEnabled(true);
     speakText('The machine is ready.');
-    addActivity('Machine Resumed', 'Coin insertion active', 'success', 'Play');
+    addActivity('Machine Resumed', 'WebSocket resume command sent', 'success', 'Play');
   }, [speakText, addActivity]);
 
   const resetAllSlots = useCallback(() => {
+    sendWebSocketCommand({ action: 'reset_all' });
     setSlots((prev) =>
       prev.map((s) => ({
         ...s,
@@ -561,7 +624,7 @@ export function CoinFlowProvider({ children }) {
     setMachineState('active');
     setCoinEntryEnabled(true);
     speakText('The machine is ready.');
-    addActivity('All Slots Reset', 'All 7 slot counts and totals cleared', 'success', 'RotateCcw');
+    addActivity('All Slots Reset', 'Cleared all 7 slot counts. Sent WebSocket reset all.', 'success', 'RotateCcw');
   }, [speakText, addActivity]);
 
   const updateSlotLimit = useCallback((slotId, newLimit, newLimitType) => {
@@ -587,10 +650,13 @@ export function CoinFlowProvider({ children }) {
         machineState,
         setMachineState,
         espConnected,
+        wsUrl,
+        setWsUrl,
+        wsStatus,
         coinEntryEnabled,
         wifiSignal,
         theme,
-        setTheme,
+        setTheme: handleSetTheme,
         // Voice
         voiceEnabled,
         setVoiceEnabled,
