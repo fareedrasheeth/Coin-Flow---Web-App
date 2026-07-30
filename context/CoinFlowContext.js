@@ -41,7 +41,6 @@ export function CoinFlowProvider({ children }) {
   // --- Theme State ---
   const [theme, setTheme] = useState('dark');
 
-  // Synchronize theme attribute on mount and theme change
   const handleSetTheme = useCallback((newTheme) => {
     setTheme(newTheme);
     if (typeof document !== 'undefined') {
@@ -109,7 +108,7 @@ export function CoinFlowProvider({ children }) {
   const [resetConfirmModal, setResetConfirmModal] = useState({ isOpen: false, slot: null });
   const [emergencyModal, setEmergencyModal] = useState(false);
 
-  // --- Exactly 7 IR Sensors (One below each hole) & 8 Servos ---
+  // --- 7 Optical IR Sensors & 8 Servo Motors ---
   const [sensors, setSensors] = useState(() =>
     ALL_SENSORS.map((s, idx) => ({
       ...s,
@@ -129,20 +128,20 @@ export function CoinFlowProvider({ children }) {
     }))
   );
 
-  // --- Activity Feed & History ---
+  // --- Activity Log & History ---
   const [activityFeed, setActivityFeed] = useState(() => [
     {
       id: 'act_init_1',
-      title: 'WebSocket Connected',
-      description: `ESP32 connected via WebSocket (${DEFAULT_WEBSOCKET_URL})`,
+      title: 'WebSocket Protocol Active',
+      description: `Listening for ESP32 telemetry events on ${DEFAULT_WEBSOCKET_URL}`,
       timestamp: BASE_TIMESTAMP,
       severity: 'info',
       icon: 'Wifi',
     },
     {
       id: 'act_init_2',
-      title: '7 IR Sensors Active',
-      description: 'All 7 optical coin sorting IR sensors calibrated & ready',
+      title: '7 Optical IR Sensors Ready',
+      description: 'Connected below sorting holes on hardware tray',
       timestamp: BASE_TIMESTAMP,
       severity: 'success',
       icon: 'CheckCircle',
@@ -215,9 +214,9 @@ export function CoinFlowProvider({ children }) {
     setActivityFeed((prev) => [newAct, ...prev]);
   }, []);
 
-  // --- Core Coin Insertion Handler ---
+  // --- Coin Insertion Processing ---
   const insertCoin = useCallback(
-    (slotId) => {
+    (targetSlotIdentifier) => {
       if (!espConnected) {
         speakText('The machine is offline.');
         addActivity('Insertion Blocked', 'ESP32 is offline', 'error', 'WifiOff');
@@ -230,7 +229,13 @@ export function CoinFlowProvider({ children }) {
         return;
       }
 
-      const slot = slots.find((s) => s.id === slotId || s.slot_id === slotId);
+      const slot = slots.find(
+        (s) =>
+          s.id === targetSlotIdentifier ||
+          s.slot_id === targetSlotIdentifier ||
+          s.name.toLowerCase() === String(targetSlotIdentifier).toLowerCase() ||
+          s.label.toLowerCase() === String(targetSlotIdentifier).toLowerCase()
+      );
       if (!slot) return;
 
       const nowStr = new Date().toISOString();
@@ -284,7 +289,7 @@ export function CoinFlowProvider({ children }) {
         slotValue: updatedValue,
       });
 
-      // Update 7 IR sensor state
+      // Update 7 IR optical sensors
       setSensors((prev) =>
         prev.map((sen) =>
           sen.gpio === slot.gpioSensor
@@ -318,7 +323,7 @@ export function CoinFlowProvider({ children }) {
 
       addActivity(
         `${slot.label} Inserted`,
-        `Detected at ${slot.gpioSensor}. Slot count updated to ${updatedCount} (Rs.${updatedValue})`,
+        `Detected by ${slot.gpioSensor}. Count updated to ${updatedCount} (Rs.${updatedValue})`,
         'success',
         'Coins'
       );
@@ -375,7 +380,7 @@ export function CoinFlowProvider({ children }) {
     [espConnected, coinEntryEnabled, machineState, slots, speakText, addActivity, announceSequence]
   );
 
-  // --- WebSocket Connection & Real-Time ESP32 Event Listener ---
+  // --- WebSocket Listener & Telemetry Processing ---
   useEffect(() => {
     connectWebSocket(
       wsUrl,
@@ -390,38 +395,70 @@ export function CoinFlowProvider({ children }) {
         }
       },
       (data) => {
-        // Handle incoming WebSocket telemetry event from ESP32
+        if (!data) return;
+
+        // INCOMING WEBSOCKET EVENT FROM ESP32:
+        // 1. Coin Detection Event
         if (data.event === 'coin_detected' || data.event === 'coin_inserted') {
-          insertCoin(data.slotId || data.slot_id);
-        } else if (data.event === 'slot_full') {
-          const slot = slots.find((s) => s.id === data.slotId || s.slot_id === data.slotId);
-          if (slot) {
+          insertCoin(data.slotId || data.slot_id || data.coinType);
+        }
+        // 2. Full Slot Event
+        else if (data.event === 'slot_full') {
+          const target = slots.find(
+            (s) => s.id === data.slotId || s.slot_id === data.slotId || s.label === data.coinType
+          );
+          if (target) {
             setMachineState('slot_full');
             setCoinEntryEnabled(false);
-            setFullSlotModal({ isOpen: true, slot });
+            setFullSlotModal({ isOpen: true, slot: target });
             announceSequence([
-              `${slot.label} compartment is full.`,
+              `${target.label} compartment is full.`,
               'Coin insertion has been paused.',
               'Please remove the coins.',
             ]);
           }
-        } else if (data.event === 'slot_reset_success') {
-          const slotId = data.slotId;
-          const targetSlot = slots.find((s) => s.id === slotId || s.slot_id === slotId);
-          if (targetSlot) {
+        }
+        // 3. Almost Full Event
+        else if (data.event === 'slot_almost_full') {
+          const target = slots.find(
+            (s) => s.id === data.slotId || s.slot_id === data.slotId || s.label === data.coinType
+          );
+          if (target) {
+            announceSequence([`${target.label} compartment is almost full.`]);
+          }
+        }
+        // 4. Slot Reset Confirmed Event
+        else if (data.event === 'slot_reset_success') {
+          const target = slots.find(
+            (s) => s.id === data.slotId || s.slot_id === data.slotId || s.label === data.coinType
+          );
+          if (target) {
             setSlots((prev) =>
-              prev.map((s) => (s.id === targetSlot.id ? { ...s, count: 0, totalValue: 0, capacityPercentage: 0, status: 'available' } : s))
+              prev.map((s) => (s.id === target.id ? { ...s, count: 0, totalValue: 0, capacityPercentage: 0, status: 'available' } : s))
             );
             setMachineState('active');
             setCoinEntryEnabled(true);
-            announceSequence([`${targetSlot.label} compartment has been reset.`, 'The machine is ready.']);
+            announceSequence([`${target.label} compartment has been reset.`, 'The machine is ready.']);
           }
+        }
+        // 5. Telemetry Sync Snapshot Event
+        else if (data.event === 'telemetry_sync') {
+          if (data.status) setMachineState(data.status);
+          if (data.coinEntryEnabled !== undefined) setCoinEntryEnabled(data.coinEntryEnabled);
+        }
+        // 6. Hardware Fault Event
+        else if (data.event === 'hardware_error') {
+          setMachineState('error');
+          speakText('Sensor error detected.');
+          addActivity('ESP32 Hardware Error', data.message || 'Sensor reading fault', 'error', 'AlertOctagon');
         }
       }
     );
-  }, [wsUrl, insertCoin, slots, announceSequence]);
+  }, [wsUrl, insertCoin, slots, speakText, announceSequence, addActivity]);
 
-  // --- Slot Reset Workflow ---
+  // --- OUTGOING WEBSOCKET COMMAND DISPATCHERS ---
+
+  // 1. Reset Slot Command
   const requestSlotReset = useCallback((slot) => {
     setResetConfirmModal({ isOpen: true, slot });
   }, []);
@@ -433,11 +470,12 @@ export function CoinFlowProvider({ children }) {
 
       const nowStr = new Date().toISOString();
 
-      // Send WebSocket command to ESP32 hardware
+      // Dispatch WebSocket JSON Command to ESP32
       sendWebSocketCommand({
-        action: 'reset_slot',
+        command: 'reset_slot',
         slotId: targetSlot.id,
         gpioServo: targetSlot.gpioServo,
+        timestamp: nowStr,
       });
 
       // Reset slot count & value locally
@@ -479,7 +517,7 @@ export function CoinFlowProvider({ children }) {
 
       addActivity(
         `${targetSlot.label} Compartment Reset`,
-        `Slot count reset to 0. WebSocket reset command sent to ESP32. Servo returned to 0°.`,
+        `Dispatched WebSocket command "reset_slot" to ESP32 (${targetSlot.gpioServo}). Counter zeroed.`,
         'success',
         'RotateCcw'
       );
@@ -492,7 +530,97 @@ export function CoinFlowProvider({ children }) {
     [slots, fullSlotModal, addActivity, announceSequence]
   );
 
-  // --- Simulation Controls ---
+  // 2. Start / Resume Machine Command
+  const resumeMachine = useCallback(() => {
+    sendWebSocketCommand({
+      command: 'resume_machine',
+      timestamp: new Date().toISOString(),
+    });
+    setMachineState('active');
+    setCoinEntryEnabled(true);
+    speakText('The machine is ready.');
+    addActivity('Machine Resumed', 'Sent WebSocket command "resume_machine" to ESP32', 'success', 'Play');
+  }, [speakText, addActivity]);
+
+  // 3. Emergency Stop Command
+  const handleEmergencyStop = useCallback(() => {
+    sendWebSocketCommand({
+      command: 'emergency_stop',
+      timestamp: new Date().toISOString(),
+    });
+    setMachineState('paused');
+    setCoinEntryEnabled(false);
+    setEmergencyModal(false);
+    speakText('Coin insertion has been paused.');
+    addActivity('Emergency Stop Triggered', 'Sent WebSocket command "emergency_stop" to ESP32', 'error', 'ShieldAlert');
+  }, [speakText, addActivity]);
+
+  // 4. Reset All Slots Command
+  const resetAllSlots = useCallback(() => {
+    sendWebSocketCommand({
+      command: 'reset_all_slots',
+      timestamp: new Date().toISOString(),
+    });
+    setSlots((prev) =>
+      prev.map((s) => ({
+        ...s,
+        count: 0,
+        totalValue: 0,
+        capacityPercentage: 0,
+        status: 'available',
+        servoStatus: 'ready',
+        servoAngle: 0,
+      }))
+    );
+    setMachineState('active');
+    setCoinEntryEnabled(true);
+    speakText('The machine is ready.');
+    addActivity('All Slots Cleared', 'Sent WebSocket command "reset_all_slots" to ESP32', 'success', 'RotateCcw');
+  }, [speakText, addActivity]);
+
+  // 5. Test Servo Movement Command
+  const testServoMovement = useCallback(
+    (servoId, gpio) => {
+      sendWebSocketCommand({
+        command: 'test_servo',
+        servoId,
+        gpio,
+        angle: 90,
+        timestamp: new Date().toISOString(),
+      });
+      speakText(`Testing servo motor.`);
+      addActivity('Test Servo Command', `Sent WebSocket command "test_servo" for ${gpio}`, 'info', 'Zap');
+    },
+    [speakText, addActivity]
+  );
+
+  // 6. Update Slot Limit Command
+  const updateSlotLimit = useCallback((slotId, newLimit, newLimitType) => {
+    sendWebSocketCommand({
+      command: 'set_slot_limit',
+      slotId,
+      maximumLimit: newLimit,
+      limitType: newLimitType,
+      timestamp: new Date().toISOString(),
+    });
+
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.id !== slotId) return s;
+        const maxPossible = newLimitType === 'count' ? newLimit : newLimit / s.coinValue;
+        const newCapPct = Math.min(100, Math.round((s.count / maxPossible) * 100));
+        return {
+          ...s,
+          maximumLimit: newLimit,
+          limitType: newLimitType,
+          capacityPercentage: newCapPct,
+          status: newCapPct >= 100 ? 'full' : newCapPct >= 80 ? 'almost_full' : 'available',
+        };
+      })
+    );
+  }, []);
+
+  // --- Simulation Triggers ---
   const triggerAlmostFullSim = useCallback(
     (slotId) => {
       setSlots((prev) =>
@@ -591,59 +719,6 @@ export function CoinFlowProvider({ children }) {
     });
   }, [speakText, addActivity]);
 
-  const handleEmergencyStop = useCallback(() => {
-    sendWebSocketCommand({ action: 'emergency_stop' });
-    setMachineState('paused');
-    setCoinEntryEnabled(false);
-    setEmergencyModal(false);
-    speakText('Coin insertion has been paused.');
-    addActivity('Emergency Stop Activated', 'WebSocket command sent to halt ESP32', 'error', 'ShieldAlert');
-  }, [speakText, addActivity]);
-
-  const resumeMachine = useCallback(() => {
-    sendWebSocketCommand({ action: 'resume_machine' });
-    setMachineState('active');
-    setCoinEntryEnabled(true);
-    speakText('The machine is ready.');
-    addActivity('Machine Resumed', 'WebSocket resume command sent', 'success', 'Play');
-  }, [speakText, addActivity]);
-
-  const resetAllSlots = useCallback(() => {
-    sendWebSocketCommand({ action: 'reset_all' });
-    setSlots((prev) =>
-      prev.map((s) => ({
-        ...s,
-        count: 0,
-        totalValue: 0,
-        capacityPercentage: 0,
-        status: 'available',
-        servoStatus: 'ready',
-        servoAngle: 0,
-      }))
-    );
-    setMachineState('active');
-    setCoinEntryEnabled(true);
-    speakText('The machine is ready.');
-    addActivity('All Slots Reset', 'Cleared all 7 slot counts. Sent WebSocket reset all.', 'success', 'RotateCcw');
-  }, [speakText, addActivity]);
-
-  const updateSlotLimit = useCallback((slotId, newLimit, newLimitType) => {
-    setSlots((prev) =>
-      prev.map((s) => {
-        if (s.id !== slotId) return s;
-        const maxPossible = newLimitType === 'count' ? newLimit : newLimit / s.coinValue;
-        const newCapPct = Math.min(100, Math.round((s.count / maxPossible) * 100));
-        return {
-          ...s,
-          maximumLimit: newLimit,
-          limitType: newLimitType,
-          capacityPercentage: newCapPct,
-          status: newCapPct >= 100 ? 'full' : newCapPct >= 80 ? 'almost_full' : 'available',
-        };
-      })
-    );
-  }, []);
-
   return (
     <CoinFlowContext.Provider
       value={{
@@ -686,10 +761,11 @@ export function CoinFlowProvider({ children }) {
         servos,
         activityFeed,
         coinHistory,
-        // Actions
+        // Actions & WebSocket Commands
         insertCoin,
         requestSlotReset,
         confirmSlotReset,
+        testServoMovement,
         triggerAlmostFullSim,
         triggerSlotFullSim,
         triggerSensorErrorSim,
