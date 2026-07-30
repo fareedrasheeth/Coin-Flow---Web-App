@@ -1,8 +1,34 @@
 'use client';
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { SRI_LANKAN_COINS, ALL_SENSORS, ALL_SERVOS, MACHINE_STATES } from '@/lib/constants';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { SRI_LANKAN_COINS, ALL_SENSORS, ALL_SERVOS } from '@/lib/constants';
 
 const CoinFlowContext = createContext(null);
+
+// Deterministic baseline timestamp for SSR hydration consistency
+const BASE_TIMESTAMP = '2026-07-30T22:00:00.000Z';
+const FIXED_SLOT_COUNTS = [12, 10, 15, 8, 14, 6, 18];
+const FIXED_SENSOR_COUNTS = [120, 12, 10, 15, 8, 14, 6, 18];
+
+// Deterministic initial coin history generator
+function generateInitialHistory() {
+  const history = [];
+  const baseTime = 1785360000000; // Fixed timestamp baseline
+  for (let i = 1; i <= 35; i++) {
+    const c = SRI_LANKAN_COINS[(i - 1) % SRI_LANKAN_COINS.length];
+    history.push({
+      eventId: `EVT-LK-${1000 + i}`,
+      coinType: c.label,
+      coinValue: c.coinValue,
+      slotName: c.name,
+      slotId: c.id,
+      detectionTime: new Date(baseTime - i * 140000).toISOString(),
+      sensorId: c.gpioSensor,
+      espDevice: 'ESP32-COIN-01',
+      status: 'Processed',
+    });
+  }
+  return history;
+}
 
 export function CoinFlowProvider({ children }) {
   // --- Machine Status State ---
@@ -20,10 +46,10 @@ export function CoinFlowProvider({ children }) {
   const [voices, setVoices] = useState([]);
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
 
-  // --- Coin Slots State ---
+  // --- Coin Slots State (DETERMINISTIC FOR HYDRATION) ---
   const [slots, setSlots] = useState(() =>
-    SRI_LANKAN_COINS.map((c) => {
-      const initialCount = Math.floor(Math.random() * 15) + 5;
+    SRI_LANKAN_COINS.map((c, idx) => {
+      const initialCount = FIXED_SLOT_COUNTS[idx] || 10;
       const initialValue = initialCount * c.coinValue;
       const limit = c.defaultLimit;
       const maxPossible = c.defaultLimitType === 'count' ? limit : limit / c.coinValue;
@@ -39,7 +65,7 @@ export function CoinFlowProvider({ children }) {
         sensorStatus: 'active',
         servoStatus: 'ready',
         servoAngle: 0,
-        lastDetectedAt: new Date(Date.now() - Math.random() * 300000).toISOString(),
+        lastDetectedAt: BASE_TIMESTAMP,
       };
     })
   );
@@ -54,7 +80,7 @@ export function CoinFlowProvider({ children }) {
     value: 2,
     slotId: 'slot_7',
     label: 'Rs.2 Big',
-    detectedAt: new Date().toISOString(),
+    detectedAt: BASE_TIMESTAMP,
     slotCount: 18,
     slotValue: 36,
   });
@@ -69,11 +95,11 @@ export function CoinFlowProvider({ children }) {
 
   // --- Sensors & Servos Detailed State ---
   const [sensors, setSensors] = useState(() =>
-    ALL_SENSORS.map((s) => ({
+    ALL_SENSORS.map((s, idx) => ({
       ...s,
       status: 'active',
-      lastTriggered: new Date(Date.now() - Math.random() * 100000).toISOString(),
-      detectionCount: Math.floor(Math.random() * 40) + 10,
+      lastTriggered: BASE_TIMESTAMP,
+      detectionCount: FIXED_SENSOR_COUNTS[idx] || 20,
       signalState: 'HIGH',
     }))
   );
@@ -83,7 +109,7 @@ export function CoinFlowProvider({ children }) {
       ...s,
       currentAngle: 0,
       status: 'ready',
-      lastMoved: new Date(Date.now() - Math.random() * 200000).toISOString(),
+      lastMoved: BASE_TIMESTAMP,
     }))
   );
 
@@ -93,7 +119,7 @@ export function CoinFlowProvider({ children }) {
       id: 'act_init_1',
       title: 'Machine Online',
       description: 'ESP32 connected via Wi-Fi (192.168.1.104)',
-      timestamp: new Date(Date.now() - 600000).toISOString(),
+      timestamp: BASE_TIMESTAMP,
       severity: 'info',
       icon: 'Wifi',
     },
@@ -101,33 +127,14 @@ export function CoinFlowProvider({ children }) {
       id: 'act_init_2',
       title: 'Self-Diagnostic Passed',
       description: 'All 8 IR Sensors and 8 Servo Motors initialized',
-      timestamp: new Date(Date.now() - 540000).toISOString(),
+      timestamp: BASE_TIMESTAMP,
       severity: 'success',
       icon: 'CheckCircle',
     },
   ]);
 
   // --- History Records for Table ---
-  const [coinHistory, setCoinHistory] = useState(() => {
-    const history = [];
-    const now = Date.now();
-    const coinTypes = SRI_LANKAN_COINS;
-    for (let i = 1; i <= 35; i++) {
-      const c = coinTypes[Math.floor(Math.random() * coinTypes.length)];
-      history.push({
-        eventId: `EVT-LK-${1000 + i}`,
-        coinType: c.label,
-        coinValue: c.coinValue,
-        slotName: c.name,
-        slotId: c.id,
-        detectionTime: new Date(now - i * 140000).toISOString(),
-        sensorId: c.gpioSensor,
-        espDevice: 'ESP32-COIN-01',
-        status: 'Processed',
-      });
-    }
-    return history;
-  });
+  const [coinHistory, setCoinHistory] = useState(() => generateInitialHistory());
 
   // --- Voice Synthesis Setup ---
   useEffect(() => {
@@ -309,7 +316,6 @@ export function CoinFlowProvider({ children }) {
       );
 
       // AUTOMATIC VOICE ANNOUNCEMENT
-      // "Rs.1 small coin inserted." or "Rs.2 big coin inserted."
       const voiceCoinMessage = `${slot.label} coin inserted.`;
       speakText(voiceCoinMessage);
 
