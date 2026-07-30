@@ -1,65 +1,182 @@
-import Image from "next/image";
+'use client';
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import AppShell from '@/components/AppShell';
+import TotalSavingsCard from '@/components/TotalSavingsCard';
+import CoinSlotCard from '@/components/CoinSlotCard';
+import ActivityFeed from '@/components/ActivityFeed';
+import CoinDropAnimation from '@/components/CoinDropAnimation';
+import { useCoins } from '@/hooks/useCoins';
+import { useVoice } from '@/hooks/useVoice';
+import { exportToCSV } from '@/lib/exportUtils';
+import { Toaster, toast } from 'react-hot-toast';
 
-export default function Home() {
+export default function DashboardPage() {
+  const { slots, totalSavings, activityFeed, coinAnimation } = useCoins();
+  const { enabled: voiceEnabled, setEnabled: setVoiceEnabled, announceCoin } = useVoice();
+  const [isKiosk, setIsKiosk] = useState(false);
+
+  // Announce coin when detected
+  useEffect(() => {
+    if (coinAnimation) {
+      announceCoin(coinAnimation.denomination, coinAnimation.label);
+    }
+  }, [coinAnimation, announceCoin]);
+
+  const toggleKiosk = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsKiosk(true);
+      toast.success("Kiosk Mode Activated");
+    } else {
+      document.exitFullscreen();
+      setIsKiosk(false);
+    }
+  };
+
+  const handleExport = () => {
+    const reportData = slots.map(s => ({
+      Coin: s.label,
+      Count: s.coinCount,
+      Value: s.totalValue,
+      Fill: `${s.fillPercentage}%`
+    }));
+    exportToCSV(reportData, 'coinflow-inventory.csv');
+    toast.success("Report exported successfully!");
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <AppShell>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'rgba(20,20,30,0.95)',
+            color: '#F0F4FF',
+            border: '1px solid rgba(108,99,255,0.3)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '12px',
+            fontSize: '13px',
+          },
+        }}
+      />
+
+      {/* Coin Drop Animation */}
+      <CoinDropAnimation coinAnimation={coinAnimation} />
+
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <h1 className="font-heading text-2xl md:text-3xl font-bold mb-1">
+          Dashboard
+        </h1>
+        <p className="text-text-secondary text-sm">
+          Real-time monitoring of your smart coin sorting machine
+        </p>
+      </motion.div>
+
+      {/* Total Savings */}
+      <TotalSavingsCard totalSavings={totalSavings} />
+
+      {/* Coin Slots Grid */}
+      <div className="mt-8 mb-6">
+        <motion.h2
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="font-heading text-lg font-bold mb-4 flex items-center gap-2"
+        >
+          <span className="w-1 h-5 rounded-full bg-gradient-to-b from-primary to-accent" />
+          Coin Slots
+        </motion.h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {slots.map((slot, index) => (
+            <CoinSlotCard key={slot.slot_id} slot={slot} index={index} />
+          ))}
+        </div>
+      </div>
+
+      {/* Activity Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <ActivityFeed events={activityFeed} />
+        </div>
+        <div>
+          <QuickActions 
+            voiceEnabled={voiceEnabled} 
+            setVoiceEnabled={setVoiceEnabled} 
+            toggleKiosk={toggleKiosk}
+            handleExport={handleExport}
+          />
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function QuickActions({ voiceEnabled, setVoiceEnabled, toggleKiosk, handleExport }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, delay: 1 }}
+      className="glass-card p-5"
+    >
+      <h3 className="font-heading font-bold text-sm mb-4 flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+        Quick Actions
+      </h3>
+      <div className="space-y-2">
+        <div className="w-full flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-card-border">
+           <div className="flex items-center gap-3">
+             <span className="text-lg">🔊</span>
+             <div>
+               <p className="text-xs font-semibold">Voice Mode</p>
+               <p className="text-[10px] text-text-secondary">Speech updates</p>
+             </div>
+           </div>
+           <div 
+             className={`toggle-switch ${voiceEnabled ? 'active' : ''}`} 
+             onClick={() => setVoiceEnabled(!voiceEnabled)} 
+           />
+        </div>
+        <ActionButton 
+          icon="📺" 
+          label="Kiosk Mode" 
+          description="Full screen dashboard" 
+          onClick={toggleKiosk}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <ActionButton 
+          icon="📊" 
+          label="Export Report" 
+          description="Download CSV Data" 
+          onClick={handleExport}
+        />
+        <ActionButton icon="🔗" label="Share QR Code" description="Share collection report" />
+      </div>
+    </motion.div>
+  );
+}
+
+function ActionButton({ icon, label, description, onClick }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-card-border 
+        hover:border-primary/40 hover:bg-primary/5 transition-all text-left"
+      whileHover={{ x: 4 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      <span className="text-lg">{icon}</span>
+      <div>
+        <p className="text-xs font-semibold">{label}</p>
+        <p className="text-[10px] text-text-secondary">{description}</p>
+      </div>
+    </motion.button>
   );
 }
