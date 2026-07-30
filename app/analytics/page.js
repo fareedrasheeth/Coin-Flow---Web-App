@@ -1,324 +1,215 @@
 'use client';
-import { motion } from 'framer-motion';
-import { useEffect, useState, useRef } from 'react';
+import React, { useState } from 'react';
 import AppShell from '@/components/AppShell';
-import { INSIGHTS } from '@/lib/constants';
+import { useCoinFlow } from '@/context/CoinFlowContext';
 import {
-  generateMockDailyData,
-  generateMockWeeklyData,
-  generateMockMonthlyData,
-  generateMockSlotData,
-  generateMockDenominationData,
-} from '@/lib/mockData';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Filler,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
   Tooltip,
-  Legend,
-} from 'chart.js';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Filler,
-  Tooltip,
-  Legend
-);
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      backgroundColor: 'rgba(10, 10, 15, 0.9)',
-      borderColor: 'rgba(108, 99, 255, 0.3)',
-      borderWidth: 1,
-      titleFont: { family: 'Space Grotesk', size: 13 },
-      bodyFont: { family: 'Inter', size: 12 },
-      padding: 12,
-      cornerRadius: 10,
-    },
-  },
-  scales: {
-    x: {
-      grid: { color: 'rgba(255,255,255,0.05)' },
-      ticks: { color: 'rgba(255,255,255,0.4)', font: { family: 'Inter', size: 10 } },
-    },
-    y: {
-      grid: { color: 'rgba(255,255,255,0.05)' },
-      ticks: { color: 'rgba(255,255,255,0.4)', font: { family: 'Inter', size: 10 } },
-    },
-  },
-};
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+  CartesianGrid,
+} from 'recharts';
+import { BarChart3, TrendingUp, Calendar, Coins, DollarSign, Clock } from 'lucide-react';
 
 export default function AnalyticsPage() {
-  const [dailyData, setDailyData] = useState(() => generateMockDailyData());
-  const [weeklyData, setWeeklyData] = useState(() => generateMockWeeklyData());
-  const [monthlyData, setMonthlyData] = useState(() => generateMockMonthlyData());
-  const [denomData, setDenomData] = useState(() => {
-    const slots = generateMockSlotData();
-    return generateMockDenominationData(slots);
-  });
-  const [insightIndex, setInsightIndex] = useState(0);
+  const { slots, totalValue, totalCoins } = useCoinFlow();
+  const [dateFilter, setDateFilter] = useState('7d');
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setInsightIndex((prev) => (prev + 1) % INSIGHTS.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Chart data formatting
+  const barData = slots.map((s) => ({
+    name: s.label,
+    count: s.count,
+    color: s.color,
+  }));
 
-  if (!dailyData) return <AppShell><LoadingSkeleton /></AppShell>;
+  const pieData = slots.map((s) => ({
+    name: s.label,
+    value: s.totalValue,
+    color: s.color,
+  }));
+
+  // Hourly insertion trend data
+  const areaData = [
+    { time: '08:00', total: 120 },
+    { time: '10:00', total: 450 },
+    { time: '12:00', total: 890 },
+    { time: '14:00', total: 1340 },
+    { time: '16:00', total: 1820 },
+    { time: '18:00', total: 2150 },
+    { time: '20:00', total: totalValue || 2450 },
+  ];
+
+  // Most frequent coin
+  const sortedByCount = [...slots].sort((a, b) => b.count - a.count);
+  const topCoin = sortedByCount[0];
 
   return (
-    <AppShell>
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <h1 className="font-heading text-2xl md:text-3xl font-bold mb-1">Analytics</h1>
-        <p className="text-text-secondary text-sm">Deep dive into your coin collection patterns</p>
-      </motion.div>
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Most Inserted" value="Rs.10" icon="🏆" color="#FFB800" delay={0} />
-        <StatCard label="Avg Daily" value="Rs.342" icon="📊" color="#6C63FF" delay={0.1} />
-        <StatCard label="Servos Released" value="14" icon="⚙️" color="#00D4FF" delay={0.2} />
-        <StatCard label="Total Coins" value="2,847" icon="🪙" color="#00FF94" delay={0.3} />
-      </div>
-
-      {/* Smart Insights */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="glass-card glow-border p-5 mb-6 relative overflow-hidden"
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-lg">💡</span>
-          <h3 className="font-heading font-bold text-sm">Smart Insights</h3>
-          <span className="badge badge-active text-[10px] ml-auto">AI-Powered</span>
+    <AppShell pageTitle="Analytics & Reports">
+      {/* Header & Date Range Filter */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 dark:bg-gray-900/80 p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-lg backdrop-blur-xl">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-indigo-500" />
+            <span>Coin Collection Insights & Telemetry Charts</span>
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Visual breakdown of coin distribution, monetary collection velocity, and insertion patterns.
+          </p>
         </div>
-        <motion.p
-          key={insightIndex}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          className="text-sm text-text-secondary"
-        >
-          {INSIGHTS[insightIndex]}
-        </motion.p>
-        <div className="flex gap-1 mt-3">
-          {INSIGHTS.map((_, i) => (
-            <div
-              key={i}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                i === insightIndex ? 'w-6 bg-primary' : 'w-2 bg-white/10'
+
+        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl border border-gray-200 dark:border-white/10">
+          <Calendar className="w-4 h-4 text-gray-400 ml-2" />
+          {['today', '7d', '30d', 'custom'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setDateFilter(f)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase transition-all ${
+                dateFilter === f
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
-            />
+            >
+              {f === 'today' ? 'Today' : f === '7d' ? '7 Days' : f === '30d' ? '30 Days' : 'Custom'}
+            </button>
           ))}
         </div>
-      </motion.div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        {/* Daily Line Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="glass-card p-5"
-        >
-          <h3 className="font-heading font-bold text-sm mb-4">Daily Collection (30 Days)</h3>
-          <div className="h-64">
-            <Line
-              data={{
-                labels: dailyData.map((d) => d.date),
-                datasets: [
-                  {
-                    data: dailyData.map((d) => d.amount),
-                    borderColor: '#6C63FF',
-                    backgroundColor: 'rgba(108,99,255,0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    pointHoverBackgroundColor: '#6C63FF',
-                    borderWidth: 2,
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
-          </div>
-        </motion.div>
-
-        {/* Weekly Bar Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="glass-card p-5"
-        >
-          <h3 className="font-heading font-bold text-sm mb-4">Weekly Comparison</h3>
-          <div className="h-64">
-            <Bar
-              data={{
-                labels: weeklyData.map((d) => d.week),
-                datasets: [
-                  {
-                    data: weeklyData.map((d) => d.amount),
-                    backgroundColor: weeklyData.map(
-                      (_, i) => `rgba(108, 99, 255, ${0.3 + (i / weeklyData.length) * 0.7})`
-                    ),
-                    borderRadius: 8,
-                    borderSkipped: false,
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
-          </div>
-        </motion.div>
-
-        {/* Monthly Area Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="glass-card p-5"
-        >
-          <h3 className="font-heading font-bold text-sm mb-4">Monthly Trend</h3>
-          <div className="h-64">
-            <Line
-              data={{
-                labels: monthlyData.map((d) => d.month),
-                datasets: [
-                  {
-                    data: monthlyData.map((d) => d.amount),
-                    borderColor: '#00D4FF',
-                    backgroundColor: 'rgba(0,212,255,0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#00D4FF',
-                    borderWidth: 2,
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
-          </div>
-        </motion.div>
-
-        {/* Denomination Doughnut */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="glass-card p-5"
-        >
-          <h3 className="font-heading font-bold text-sm mb-4">Coin Distribution</h3>
-          <div className="h-64 flex items-center justify-center">
-            <Doughnut
-              data={{
-                labels: denomData.map((d) => d.label),
-                datasets: [
-                  {
-                    data: denomData.map((d) => d.value),
-                    backgroundColor: denomData.map((d) => d.color),
-                    borderColor: 'transparent',
-                    borderWidth: 2,
-                    hoverOffset: 8,
-                  },
-                ],
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '65%',
-                plugins: {
-                  legend: {
-                    position: 'right',
-                    labels: {
-                      color: 'rgba(255,255,255,0.6)',
-                      font: { family: 'Inter', size: 11 },
-                      padding: 12,
-                      usePointStyle: true,
-                      pointStyleWidth: 10,
-                    },
-                  },
-                  tooltip: {
-                    backgroundColor: 'rgba(10, 10, 15, 0.9)',
-                    borderColor: 'rgba(108, 99, 255, 0.3)',
-                    borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 10,
-                  },
-                },
-              }}
-            />
-          </div>
-        </motion.div>
       </div>
-    </AppShell>
-  );
-}
 
-function StatCard({ label, value, icon, color, delay }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      className="glass-card p-4"
-    >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xl">{icon}</span>
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center"
-          style={{ background: `${color}15` }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-          </svg>
+      {/* Metrics Summary Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-5 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg flex items-center justify-between">
+          <div>
+            <span className="text-xs text-gray-400 uppercase font-semibold">Most Frequent Coin</span>
+            <div className="text-xl font-bold text-indigo-400 mt-1">{topCoin?.label}</div>
+            <span className="text-[11px] text-gray-400">{topCoin?.count} Inserted</span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <Coins className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg flex items-center justify-between">
+          <div>
+            <span className="text-xs text-gray-400 uppercase font-semibold">Avg Collection Speed</span>
+            <div className="text-xl font-bold text-emerald-400 mt-1">4.2 Coins/min</div>
+            <span className="text-[11px] text-gray-400">Active Sorting Mode</span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg flex items-center justify-between">
+          <div>
+            <span className="text-xs text-gray-400 uppercase font-semibold">Avg Reset Duration</span>
+            <div className="text-xl font-bold text-amber-400 mt-1">48 Seconds</div>
+            <span className="text-[11px] text-gray-400">Compartment Ejection</span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <Clock className="w-6 h-6" />
+          </div>
         </div>
       </div>
-      <p className="text-text-secondary text-[10px] uppercase tracking-wider">{label}</p>
-      <p className="font-heading font-bold text-lg mt-1" style={{ color }}>{value}</p>
-    </motion.div>
-  );
-}
 
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="skeleton h-8 w-48" />
-      <div className="skeleton h-4 w-64" />
-      <div className="grid grid-cols-4 gap-4 mt-6">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="skeleton h-24 rounded-2xl" />
-        ))}
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Bar Chart: Coin Counts by Category */}
+        <div className="p-6 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg">
+          <h3 className="font-bold text-base text-gray-900 dark:text-white mb-4">
+            Coin Count Breakdown by Category
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={barData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                <XAxis dataKey="name" stroke="#888" fontSize={10} />
+                <YAxis stroke="#888" fontSize={10} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111827',
+                    borderColor: '#374151',
+                    borderRadius: '12px',
+                    color: '#fff',
+                  }}
+                />
+                <Bar dataKey="count" fill="#6C63FF" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Donut Chart: Monetary Distribution */}
+        <div className="p-6 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg">
+          <h3 className="font-bold text-base text-gray-900 dark:text-white mb-4">
+            Monetary Value Share (Rs.)
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={4}
+                  dataKey="value"
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color || '#6C63FF'} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111827',
+                    borderColor: '#374151',
+                    borderRadius: '12px',
+                    color: '#fff',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Full-width Area Chart: Value Growth over Time */}
+        <div className="lg:col-span-2 p-6 rounded-3xl bg-white/80 dark:bg-gray-900/80 border border-gray-200 dark:border-white/10 shadow-lg">
+          <h3 className="font-bold text-base text-gray-900 dark:text-white mb-4">
+            Cumulative Collection Trend (Rs.) Today
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={areaData}>
+                <defs>
+                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                <XAxis dataKey="time" stroke="#888" fontSize={10} />
+                <YAxis stroke="#888" fontSize={10} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#111827',
+                    borderColor: '#374151',
+                    borderRadius: '12px',
+                    color: '#fff',
+                  }}
+                />
+                <Area type="monotone" dataKey="total" stroke="#10B981" fillOpacity={1} fill="url(#colorTotal)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-4 mt-6">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="skeleton h-72 rounded-2xl" />
-        ))}
-      </div>
-    </div>
+    </AppShell>
   );
 }

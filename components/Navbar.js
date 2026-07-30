@@ -1,196 +1,235 @@
 'use client';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
-import { useDarkMode } from '@/hooks/useDarkMode';
-import { generateMockNotifications } from '@/lib/mockData';
-import { NOTIFICATION_TYPES } from '@/lib/constants';
-import { timeAgo } from '@/lib/mockData';
+import React, { useState, useEffect } from 'react';
+import { useCoinFlow } from '@/context/CoinFlowContext';
+import {
+  Wifi,
+  WifiOff,
+  Volume2,
+  VolumeX,
+  Bell,
+  Sun,
+  Moon,
+  User,
+  Sliders,
+  CheckCircle,
+  AlertTriangle,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react';
 
-export default function Navbar({ onMenuClick }) {
-  const { isDark, toggle } = useDarkMode();
+export default function Navbar({ title = 'Overview Dashboard' }) {
+  const {
+    espConnected,
+    wifiSignal,
+    theme,
+    setTheme,
+    voiceEnabled,
+    setVoiceEnabled,
+    volume,
+    setVolume,
+    activityFeed,
+  } = useCoinFlow();
+
+  const [currentTime, setCurrentTime] = useState('');
+  const [showVoiceControls, setShowVoiceControls] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState(() => generateMockNotifications());
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        }) +
+          ' • ' +
+          now.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+      );
+    };
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      if (nextTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
   };
 
-  const dismissNotification = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
+  const unreadCount = activityFeed.filter((a) => a.severity === 'warning' || a.severity === 'error').length;
 
   return (
-    <header className="navbar fixed top-0 left-0 right-0 z-40 h-16 flex items-center justify-between px-4 md:px-6">
-      {/* Left: Hamburger (mobile) + Title */}
-      <div className="flex items-center gap-3">
-        <button
-          className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
-          onClick={onMenuClick}
-          aria-label="Toggle menu"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-        <div className="md:hidden flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-            <span className="text-white text-sm font-bold">₵</span>
-          </div>
-          <span className="font-heading font-bold neon-text">CoinFlow</span>
+    <header className="sticky top-0 z-30 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/10 px-4 md:px-8 py-3 transition-colors">
+      <div className="flex items-center justify-between gap-4">
+        {/* Left Side: Title & Live Time */}
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
+            <span>{title}</span>
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+              <Sparkles className="w-3 h-3" /> ESP32 IoT Engine
+            </span>
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">{currentTime}</p>
         </div>
-      </div>
 
-      {/* Center: Search (desktop) */}
-      <div className="hidden md:flex items-center flex-1 max-w-md ml-72">
-        <div className="relative w-full">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search coins, slots, events..."
-            className="input-field pl-10 py-2 text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Right: Toggle + Notifications + Avatar */}
-      <div className="flex items-center gap-3">
-        {/* Dark Mode Toggle */}
-        <motion.button
-          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-          onClick={toggle}
-          whileTap={{ scale: 0.9, rotate: 180 }}
-          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        >
-          <AnimatePresence mode="wait">
-            {isDark ? (
-              <motion.svg
-                key="moon"
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 90, opacity: 0 }}
-                width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFB800" strokeWidth="2"
-              >
-                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-              </motion.svg>
-            ) : (
-              <motion.svg
-                key="sun"
-                initial={{ rotate: 90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: -90, opacity: 0 }}
-                width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFB800" strokeWidth="2"
-              >
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </motion.svg>
-            )}
-          </AnimatePresence>
-        </motion.button>
-
-        {/* Notification Bell */}
-        <div className="relative">
-          <motion.button
-            className="p-2 rounded-lg hover:bg-white/10 transition-colors relative"
-            onClick={() => {
-              setShowNotifications(!showNotifications);
-              if (!showNotifications) markAllRead();
-            }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 01-3.46 0" />
-            </svg>
-            <AnimatePresence>
-              {unreadCount > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  className="notification-dot"
-                >
-                  {unreadCount}
-                </motion.span>
+        {/* Right Side Controls */}
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* ESP32 Indicator */}
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-xs font-medium">
+            <span className="relative flex h-2.5 w-2.5">
+              {espConnected ? (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </>
+              ) : (
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
               )}
-            </AnimatePresence>
-          </motion.button>
+            </span>
+            <span className="text-gray-700 dark:text-gray-200">
+              {espConnected ? 'ESP32 Online' : 'ESP32 Offline'}
+            </span>
+          </div>
 
-          {/* Notification Dropdown */}
-          <AnimatePresence>
-            {showNotifications && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                className="absolute right-0 top-12 w-80 glass-card-static p-0 overflow-hidden"
-              >
-                <div className="p-4 border-b border-card-border">
-                  <h3 className="font-heading font-semibold text-sm">Notifications</h3>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center text-text-secondary text-sm">
-                      No notifications
-                    </div>
-                  ) : (
-                    notifications.map((n) => {
-                      const type = NOTIFICATION_TYPES[n.type] || NOTIFICATION_TYPES.COIN_DETECTED;
-                      return (
-                        <motion.div
-                          key={n.id}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className={`flex items-start gap-3 p-3 border-b border-card-border hover:bg-white/5 transition-colors ${
-                            !n.read ? 'bg-primary/5' : ''
-                          }`}
-                        >
-                          <span className="text-lg mt-0.5">{type.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{n.message}</p>
-                            <p className="text-[10px] text-text-secondary mt-1">{timeAgo(n.timestamp)}</p>
-                          </div>
-                          <button
-                            onClick={() => dismissNotification(n.id)}
-                            className="text-text-secondary hover:text-danger transition-colors p-1"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                        </motion.div>
-                      );
-                    })
-                  )}
-                </div>
-              </motion.div>
+          {/* Wi-Fi Signal Status */}
+          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-xs text-gray-600 dark:text-gray-300">
+            {espConnected ? (
+              <>
+                <Wifi className="w-4 h-4 text-emerald-500" />
+                <span>{wifiSignal}% Signal</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-4 h-4 text-red-500" />
+                <span className="text-red-400">Disconnected</span>
+              </>
             )}
-          </AnimatePresence>
-        </div>
+          </div>
 
-        {/* User Avatar */}
-        <motion.div
-          className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center cursor-pointer"
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <span className="text-white text-sm font-bold">CF</span>
-        </motion.div>
+          {/* Voice Announcement Toggle & Volume Popover */}
+          <div className="relative">
+            <button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setShowVoiceControls(!showVoiceControls);
+              }}
+              title={voiceEnabled ? 'Voice Output Active (Right-click for Volume)' : 'Voice Output Muted'}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center border ${
+                voiceEnabled
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20'
+                  : 'bg-gray-100 dark:bg-white/5 text-gray-400 border-gray-200 dark:border-white/10'
+              }`}
+            >
+              {voiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+
+            {/* Quick volume popover on right click or button hover */}
+            {showVoiceControls && (
+              <div className="absolute right-0 top-12 z-40 w-56 p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 shadow-xl space-y-3 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">Voice Output Volume</span>
+                  <span className="text-emerald-500 font-mono">{Math.round(volume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-full accent-emerald-500 cursor-pointer"
+                />
+                <p className="text-[10px] text-gray-400">
+                  Automatic text-to-speech outputs coin insertions & full compartment warnings.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Notifications Center Popover */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative p-2.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 top-12 z-40 w-80 p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 shadow-2xl space-y-3 max-h-96 overflow-y-auto">
+                <div className="flex justify-between items-center border-b border-gray-100 dark:border-white/10 pb-2">
+                  <h4 className="font-bold text-sm text-gray-900 dark:text-white">Recent Hardware Logs</h4>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 py-0.5 rounded-full font-semibold">
+                    Live Telemetry
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {activityFeed.slice(0, 5).map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-2.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 flex items-start gap-2.5 text-xs"
+                    >
+                      <div className="p-1.5 rounded-lg bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-200 mt-0.5">
+                        {item.severity === 'error' ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                        ) : item.severity === 'warning' ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{item.title}</div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1">{item.description}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Dark / Light Mode Toggle */}
+          <button
+            onClick={toggleTheme}
+            title="Toggle Light / Dark Mode"
+            className="p-2.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-600" />}
+          </button>
+
+          {/* User Profile Avatar */}
+          <div className="flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-white/10">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 p-0.5 shadow-md">
+              <div className="w-full h-full bg-gray-900 rounded-[10px] flex items-center justify-center text-white font-bold text-xs">
+                FR
+              </div>
+            </div>
+            <div className="hidden xl:block text-left text-xs">
+              <div className="font-bold text-gray-900 dark:text-white leading-tight">Fareed Rasheeth</div>
+              <div className="text-[10px] text-gray-400">IoT Operator</div>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
   );

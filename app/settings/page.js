@@ -1,0 +1,233 @@
+'use client';
+import React from 'react';
+import AppShell from '@/components/AppShell';
+import { useCoinFlow } from '@/context/CoinFlowContext';
+import {
+  Settings,
+  Volume2,
+  VolumeX,
+  Grid,
+  Cpu,
+  Monitor,
+  Play,
+  CheckCircle2,
+  Info,
+} from 'lucide-react';
+
+export default function SettingsPage() {
+  const {
+    voiceEnabled,
+    setVoiceEnabled,
+    volume,
+    setVolume,
+    rate,
+    setRate,
+    pitch,
+    setPitch,
+    voices,
+    selectedVoiceIndex,
+    setSelectedVoiceIndex,
+    speakText,
+    theme,
+    setTheme,
+  } = useCoinFlow();
+
+  const handleTestVoice = () => {
+    speakText('Rs.20 big coin inserted. Testing automatic voice output announcement.');
+  };
+
+  return (
+    <AppShell pageTitle="System Settings">
+      <div className="space-y-6 max-w-5xl">
+        {/* Header */}
+        <div className="bg-white/80 dark:bg-gray-900/80 p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-lg backdrop-blur-xl">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Settings className="w-6 h-6 text-indigo-500" />
+            <span>CoinFlow Hardware & App Settings</span>
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Configure automatic Text-to-Speech output announcements, slot limits, ESP32 IoT endpoints, and theme options.
+          </p>
+        </div>
+
+        {/* 1. Voice Announcement Output Settings */}
+        <div className="bg-white/80 dark:bg-gray-900/80 p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-lg backdrop-blur-xl space-y-5">
+          <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/10 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+                <Volume2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-gray-900 dark:text-white">
+                  Automatic Voice Output Announcements
+                </h3>
+                <p className="text-[11px] text-gray-400">
+                  Browser SpeechSynthesis API text-to-speech output system. (No microphone/voice input)
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Switch */}
+            <button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                voiceEnabled
+                  ? 'bg-emerald-500 text-white border-emerald-400 shadow-md'
+                  : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-white/10'
+              }`}
+            >
+              {voiceEnabled ? 'VOICE ENABLED' : 'VOICE MUTED'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+            {/* Select Voice */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Text-to-Speech Voice Engine:</label>
+              <select
+                value={selectedVoiceIndex}
+                onChange={(e) => setSelectedVoiceIndex(parseInt(e.target.value, 10))}
+                className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white outline-none"
+              >
+                {voices.length === 0 ? (
+                  <option value={0}>Default Browser English Voice</option>
+                ) : (
+                  voices.map((v, i) => (
+                    <option key={i} value={i}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            {/* Volume */}
+            <div>
+              <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
+                <span>Announcement Volume:</span>
+                <span className="font-mono text-emerald-400 font-bold">{Math.round(volume * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
+                className="w-full accent-emerald-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Rate */}
+            <div>
+              <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
+                <span>Speech Speed Rate:</span>
+                <span className="font-mono text-indigo-400 font-bold">{rate}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.1"
+                value={rate}
+                onChange={(e) => setRate(parseFloat(e.target.value))}
+                className="w-full accent-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            {/* Pitch */}
+            <div>
+              <div className="flex justify-between items-center text-xs text-gray-400 mb-1">
+                <span>Voice Pitch:</span>
+                <span className="font-mono text-purple-400 font-bold">{pitch}</span>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.1"
+                value={pitch}
+                onChange={(e) => setPitch(parseFloat(e.target.value))}
+                className="w-full accent-purple-500 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-between items-center border-t border-gray-100 dark:border-white/10">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Announce sample: "Rs.20 big coin inserted."</span>
+            </div>
+
+            <button
+              onClick={handleTestVoice}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg transition-all"
+            >
+              <Play className="w-3.5 h-3.5" /> Test Speech Output
+            </button>
+          </div>
+        </div>
+
+        {/* 2. ESP32 Machine & Network Configuration */}
+        <div className="bg-white/80 dark:bg-gray-900/80 p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-lg backdrop-blur-xl space-y-4">
+          <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-3">
+            <Cpu className="w-5 h-5 text-indigo-500" />
+            <h3 className="font-bold text-sm text-gray-900 dark:text-white">
+              ESP32 Machine Telemetry & WebSockets / MQTT Settings
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="text-gray-400 block mb-1">ESP32 Device Identifier:</label>
+              <input
+                type="text"
+                readOnly
+                value="ESP32-COINFLOW-SL-01"
+                className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-900 dark:text-white outline-none font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-gray-400 block mb-1">WebSocket / MQTT Broker Endpoint:</label>
+              <input
+                type="text"
+                readOnly
+                value="wss://broker.hivemq.com:8884/mqtt/coinflow"
+                className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-gray-900 dark:text-white outline-none font-mono"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Display & Theme Settings */}
+        <div className="bg-white/80 dark:bg-gray-900/80 p-6 rounded-3xl border border-gray-200 dark:border-white/10 shadow-lg backdrop-blur-xl space-y-4">
+          <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-3">
+            <Monitor className="w-5 h-5 text-purple-500" />
+            <h3 className="font-bold text-sm text-gray-900 dark:text-white">Display Preferences</h3>
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <div>
+              <span className="font-bold text-gray-900 dark:text-white block">Theme Mode</span>
+              <span className="text-gray-400">Switch between Apple Light Mode and Dark Mode</span>
+            </div>
+
+            <button
+              onClick={() => {
+                const next = theme === 'dark' ? 'light' : 'dark';
+                setTheme(next);
+                document.documentElement.setAttribute('data-theme', next);
+                if (next === 'dark') document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+              }}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-all"
+            >
+              Toggle Theme ({theme.toUpperCase()})
+            </button>
+          </div>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
