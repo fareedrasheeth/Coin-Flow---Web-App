@@ -1,12 +1,17 @@
 {
   "name": "coinflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "main": "main.js",
+  "homepage": "./",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "next build && electron-builder"
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.19.4",
@@ -26,8 +31,31 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "concurrently": "^9.2.4",
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.coinflow.app",
+    "productName": "CoinFlow Smart Coin Sorter",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
   }
 }
