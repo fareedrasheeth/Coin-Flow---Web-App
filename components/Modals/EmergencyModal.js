@@ -2,10 +2,10 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCoinFlow } from '@/context/CoinFlowContext';
-import { ShieldAlert, X } from 'lucide-react';
+import { ShieldAlert, Play, X } from 'lucide-react';
 
 export default function EmergencyModal() {
-  const { emergencyModal, setEmergencyModal, handleEmergencyStop } = useCoinFlow();
+  const { emergencyModal, setEmergencyModal, handleEmergencyStop, resumeMachine } = useCoinFlow();
 
   if (!emergencyModal) return null;
 
@@ -30,24 +30,28 @@ export default function EmergencyModal() {
           </div>
 
           <h3 className="text-2xl font-bold text-white mb-2">
-            Confirm Emergency Stop
+            ESP32 Machine Control
           </h3>
           <p className="text-sm text-gray-300 mb-6">
-            Are you sure you want to trigger an immediate Emergency Stop? This will immediately halt the main coin entry servo and block all new coin sorting.
+            Click <strong>HALT MACHINE</strong> to stop all ESP32 work immediately, or <strong>CONTINUE WORK</strong> to resume ESP32 operations right where it stopped.
           </p>
 
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => setEmergencyModal(false)}
-              className="flex-1 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium text-sm transition-colors"
+              onClick={() => {
+                resumeMachine();
+                setEmergencyModal(false);
+              }}
+              className="px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-1.5"
             >
-              Cancel
+              <Play className="w-4 h-4 fill-white" />
+              <span>CONTINUE WORK</span>
             </button>
             <button
               onClick={handleEmergencyStop}
-              className="flex-1 px-4 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2"
+              className="px-4 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-1.5"
             >
-              <ShieldAlert className="w-5 h-5" />
+              <ShieldAlert className="w-4 h-4" />
               <span>HALT MACHINE</span>
             </button>
           </div>

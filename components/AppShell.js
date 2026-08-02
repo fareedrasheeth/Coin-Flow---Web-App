@@ -7,7 +7,7 @@ import FullSlotAlertModal from '@/components/Modals/FullSlotAlertModal';
 import ResetConfirmModal from '@/components/Modals/ResetConfirmModal';
 import EmergencyModal from '@/components/Modals/EmergencyModal';
 
-export default function AppShell({ children, pageTitle = 'Overview Dashboard' }) {
+export default function AppShell({ children, pageTitle = 'Dashboard' }) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
       {/* Sidebar */}

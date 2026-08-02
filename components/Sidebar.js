@@ -105,8 +105,10 @@ export default function Sidebar() {
         {/* Machine Connection Status Card */}
         <div className="p-3 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-xs">
           <div className="flex items-center gap-2">
-            {espConnected ? (
+            {wsStatus === 'connected' ? (
               <Radio className="w-4 h-4 text-emerald-500 shrink-0" />
+            ) : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? (
+              <Radio className="w-4 h-4 text-amber-500 animate-pulse shrink-0" />
             ) : (
               <WifiOff className="w-4 h-4 text-red-500 shrink-0" />
             )}
@@ -116,7 +118,11 @@ export default function Sidebar() {
                   <span className="font-semibold text-gray-900 dark:text-white">WebSocket</span>
                   <span
                     className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      espConnected ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-500'
+                      wsStatus === 'connected'
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                        : wsStatus === 'connecting' || wsStatus === 'reconnecting'
+                        ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                        : 'bg-red-500/20 text-red-500'
                     }`}
                   >
                     {wsStatus.toUpperCase()}

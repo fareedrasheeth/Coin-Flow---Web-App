@@ -91,7 +91,7 @@ export default function OverviewPage() {
   const statusInfo = getMachineStateBadge();
 
   return (
-    <AppShell pageTitle="Overview Dashboard">
+    <AppShell pageTitle="Dashboard">
       {/* Top Summary Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Value Card */}

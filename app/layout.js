@@ -32,7 +32,7 @@ export default function RootLayout({ children }) {
         <meta name="theme-color" content="#090d16" />
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className="min-h-full flex flex-col font-sans bg-gray-950 text-gray-100">
+      <body className="min-h-full flex flex-col font-sans bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300">
         <CoinFlowProvider>{children}</CoinFlowProvider>
       </body>
     </html>

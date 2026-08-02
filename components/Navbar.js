@@ -17,6 +17,7 @@ import {
 
 export default function Navbar({ title = 'Overview Dashboard' }) {
   const {
+    esp32Ip,
     espConnected,
     wsStatus,
     wsUrl,
@@ -82,26 +83,35 @@ export default function Navbar({ title = 'Overview Dashboard' }) {
           {/* WebSocket Connection Indicator */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-xs font-medium">
             <span className="relative flex h-2.5 w-2.5">
-              {espConnected && wsStatus === 'connected' ? (
+              {wsStatus === 'connected' ? (
                 <>
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </>
-              ) : wsStatus === 'connecting' ? (
+              ) : wsStatus === 'connecting' || wsStatus === 'reconnecting' ? (
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 animate-pulse"></span>
-              ) : (
+              ) : wsStatus === 'error' ? (
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+              ) : (
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gray-400"></span>
               )}
             </span>
-            <span className="text-gray-700 dark:text-gray-200 flex items-center gap-1">
-              <Radio className="w-3 h-3 text-indigo-500" />
-              {espConnected ? 'ESP32 WebSocket Connected' : 'ESP32 Offline'}
+            <span className="text-gray-700 dark:text-gray-200 font-mono text-[11px]">
+              {wsStatus === 'connected'
+                ? `Connected to ${esp32Ip}:81`
+                : wsStatus === 'connecting'
+                ? `Connecting to ${esp32Ip}:81`
+                : wsStatus === 'reconnecting'
+                ? `Reconnecting to ${esp32Ip}:81`
+                : wsStatus === 'error'
+                ? `Connection Error (${esp32Ip}:81)`
+                : `ESP32 disconnected`}
             </span>
           </div>
 
           {/* Wi-Fi Signal Status */}
           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-xs text-gray-600 dark:text-gray-300">
-            {espConnected ? (
+            {wsStatus === 'connected' ? (
               <>
                 <Wifi className="w-4 h-4 text-emerald-500" />
                 <span>{wifiSignal}% Signal</span>
@@ -109,7 +119,7 @@ export default function Navbar({ title = 'Overview Dashboard' }) {
             ) : (
               <>
                 <WifiOff className="w-4 h-4 text-red-500" />
-                <span className="text-red-400">Disconnected</span>
+                <span className="text-red-400">Offline</span>
               </>
             )}
           </div>
